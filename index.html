@@ -24,8 +24,22 @@
             align-items: center;
         }
         h1 { color: var(--primary); margin-bottom: 5px; text-align: center; }
-        p.subtitle { color: #888; margin-top: 0; margin-bottom: 30px; text-align: center; }
+        p.subtitle { color: #888; margin-top: 0; margin-bottom: 20px; text-align: center; }
         
+        .info-box {
+            background-color: #2c2c2c;
+            border-left: 4px solid var(--secondary);
+            padding: 10px 15px;
+            margin-bottom: 25px;
+            border-radius: 4px;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #ccc;
+            width: 100%;
+            max-width: 800px;
+            box-sizing: border-box;
+        }
+
         .container {
             background-color: var(--surface);
             padding: 25px;
@@ -98,6 +112,12 @@
     <h1>Mount Feeding Optimizer</h1>
     <p class="subtitle">Find the absolute cheapest and simplest feeding paths.</p>
 
+    <div class="info-box">
+        <strong>💡 How it works:</strong><br>
+        • <strong style="color: var(--primary);">Cheapest</strong> paths prioritize lower-tier materials to save gold.<br>
+        • <strong style="color: var(--primary);">Simplest</strong> paths prioritize using fewer unique materials to save inventory slots.
+    </div>
+
     <div class="container">
         <div class="grid-2col">
             <div class="stat-group">
@@ -112,7 +132,7 @@
 
         <div class="full-width">
             <label style="font-weight: bold; color: var(--secondary);">Maximum Material Level Allowed:</label>
-            <input type="number" id="maxCap" value="115" min="1">
+            <input type="number" id="maxCap" value="115" min="1" max="150">
             <div id="capWarning" style="color: #ff7675; font-size: 13px; display: none; margin-top: 5px;">
                 ⚠️ Warning: Materials above Level 115 are theoretical and do not currently exist in-game.
             </div>
@@ -214,7 +234,7 @@
 
             let allMaxed = true;
             let maxCurrentStat = 0;
-            let stateKey = 0n; // 64-bit Bitwise Packing for extreme speed
+            let stateKey = 0n;
 
             for (let i = 0; i < StatCount; i++) {
                 let cappedVal = stats[i] < TargetStats[i] ? stats[i] : TargetStats[i];
@@ -230,7 +250,7 @@
             if (allMaxed) {
                 if (currentDepth < MinFeedings) {
                     MinFeedings = currentDepth;
-                    BestCombinations = [JSON.parse(JSON.stringify(currentPath))];
+                    BestCombinations =[JSON.parse(JSON.stringify(currentPath))];
                 } else if (currentDepth === MinFeedings) {
                     BestCombinations.push(JSON.parse(JSON.stringify(currentPath)));
                 }
@@ -292,6 +312,8 @@
     <!-- UI JAVASCRIPT (Handles DOM and Worker communication) -->
     <script>
         const statNames =["Speed", "Accel", "Jump/Alti", "Energy", "Handling", "Toughness", "Boost", "Training"];
+        const GameTiers =[1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150];
+        
         let worker = null;
         let startTime = 0;
 
@@ -326,13 +348,16 @@
                 if(t > highestTarget) highestTarget = t;
             }
 
+            let rawCap = parseInt(document.getElementById('maxCap').value) || 115;
+            let capWarning = document.getElementById('capWarning');
+
+            // Show theoretical warning if cap is > 115
             if (rawCap > 115) {
                 capWarning.style.display = "block";
             } else {
                 capWarning.style.display = "none";
             }
             
-            // Snaps whatever the user types to the correct game tiers
             function getTier(v) {
                 let h = 1;
                 for(let t of GameTiers) if (v >= t) h = t;
@@ -344,12 +369,15 @@
 
             let btn = document.getElementById('runBtn');
             let status = document.getElementById('status');
+            
+            // Disable button and all inputs during calculation
             btn.disabled = true;
+            document.querySelectorAll('input').forEach(input => input.disabled = true);
+            
             btn.innerText = "CALCULATING...";
             status.innerText = "Spooling up processor thread...";
             startTime = performance.now();
 
-            // Create Web Worker from script block
             let blob = new Blob([document.getElementById('workerCode').textContent], {type: 'text/javascript'});
             if(worker) worker.terminate();
             worker = new Worker(window.URL.createObjectURL(blob));
@@ -358,8 +386,11 @@
                 if (e.data.type === 'progress') {
                     status.innerText = `Searching... | States Evaluated: ${e.data.states.toLocaleString()} | Best Found: ${e.data.best < 15 ? e.data.best : "None yet"}`;
                 } else if (e.data.type === 'done') {
+                    // Re-enable button and inputs
                     btn.disabled = false;
+                    document.querySelectorAll('input').forEach(input => input.disabled = false);
                     btn.innerText = "RUN OPTIMIZER";
+                    
                     processResults(e.data, MaxMatLvl);
                 }
             };
@@ -414,19 +445,18 @@
             let cheapCount = 0, simpCount = 0;
 
             parsed.forEach(obj => {
-                // Added 'Total Feeds' and changed 'Slots' to '# of unique materials'
                 let entry = `--- SOLUTION ${obj.id} | Total Feeds: ${data.best} | Cost: ${obj.cost} | # of unique materials: ${obj.simp} ---\n${obj.text}\n`;
                 if(obj.cost === minCost) { cheapTxt += entry; cheapCount++; }
                 if(obj.simp === minSimp) { simpTxt += entry; simpCount++; }
                 allTxt += entry;
             });
-            
+
             document.getElementById('tabsContainer').style.display = 'flex';
             document.querySelectorAll('.tab')[0].innerText = `🏆 Cheapest (${cheapCount})`;
             document.querySelectorAll('.tab')[1].innerText = `🎒 Simplest (${simpCount})`;
             document.querySelectorAll('.tab')[2].innerText = `📋 All (${parsed.length})`;
-            
-            document.getElementById('cheapDesc').innerText = `Tied for Least Higher-tier Materils (Sum of Levels: ${minCost}):`;
+
+            document.getElementById('cheapDesc').innerText = `Tied for Lowest Cost (Sum of Levels: ${minCost}):`;
             document.getElementById('simpDesc').innerText = `Tied for Fewest Unique Materials (Count: ${minSimp}):`;
 
             document.getElementById('outCheap').innerText = cheapTxt;
