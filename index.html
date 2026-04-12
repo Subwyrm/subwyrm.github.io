@@ -112,7 +112,10 @@
 
         <div class="full-width">
             <label style="font-weight: bold; color: var(--secondary);">Maximum Material Level Allowed:</label>
-            <input type="number" id="maxCap" value="115" min="1" max="150">
+            <input type="number" id="maxCap" value="115" min="1">
+            <div id="capWarning" style="color: #ff7675; font-size: 13px; display: none; margin-top: 5px;">
+                ⚠️ Warning: Materials above Level 115 are theoretical and do not currently exist in-game.
+            </div>
         </div>
 
         <button id="runBtn" onclick="runOptimizer()">RUN OPTIMIZER</button>
@@ -140,7 +143,7 @@
 
     <!-- WEB WORKER SCRIPT (Runs the heavy math in the background) -->
     <script id="workerCode" type="javascript/worker">
-        const GameTiers =[1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 105, 110, 115, 120, 130, 140, 150];
+        const GameTiers =[1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150];
         const Materials = [["Oil", "0", "0", "A", "0", "C", "0", "0", "B"],["Meat", "0", "E", "0", "D", "0", "0", "0", "0"],["String", "0", "A", "0", "0", "B", "0", "C", "0"],["Grain", "E", "0", "D", "0", "0", "0", "0", "0"],["Ingot", "0", "0", "0", "D", "0", "E", "0", "0"],["Gem", "B", "0", "0", "A", "0", "0", "0", "C"],["Wood", "A", "C", "0", "0", "0", "B", "0", "0"],["Paper", "0", "0", "E", "0", "0", "0", "D", "0"]
         ];
         const StatCount = 8;
@@ -323,9 +326,13 @@
                 if(t > highestTarget) highestTarget = t;
             }
 
-            let rawCap = parseInt(document.getElementById('maxCap').value) || 115;
-            const GameTiers =[1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 105, 110, 115, 120, 130, 140, 150];
+            if (rawCap > 115) {
+                capWarning.style.display = "block";
+            } else {
+                capWarning.style.display = "none";
+            }
             
+            // Snaps whatever the user types to the correct game tiers
             function getTier(v) {
                 let h = 1;
                 for(let t of GameTiers) if (v >= t) h = t;
@@ -372,7 +379,7 @@
                     stepNum++;
                 }
             }
-            if(maxLvlItems.length > 0) str += `   Max Lvl Feeds (Any Order): ${maxLvlItems.join(", ")}\n`;
+            if(maxLvlItems.length > 0) str += `   Lvl ${maxLvl} Feeds (Any Order): ${maxLvlItems.join(", ")}\n`;
             return str;
         }
 
@@ -407,19 +414,20 @@
             let cheapCount = 0, simpCount = 0;
 
             parsed.forEach(obj => {
-                let entry = `--- SOLUTION ${obj.id} | Cost: ${obj.cost} | Slots: ${obj.simp} ---\n${obj.text}\n`;
+                // Added 'Total Feeds' and changed 'Slots' to '# of unique materials'
+                let entry = `--- SOLUTION ${obj.id} | Total Feeds: ${data.best} | Cost: ${obj.cost} | # of unique materials: ${obj.simp} ---\n${obj.text}\n`;
                 if(obj.cost === minCost) { cheapTxt += entry; cheapCount++; }
                 if(obj.simp === minSimp) { simpTxt += entry; simpCount++; }
                 allTxt += entry;
             });
-
+            
             document.getElementById('tabsContainer').style.display = 'flex';
             document.querySelectorAll('.tab')[0].innerText = `🏆 Cheapest (${cheapCount})`;
             document.querySelectorAll('.tab')[1].innerText = `🎒 Simplest (${simpCount})`;
             document.querySelectorAll('.tab')[2].innerText = `📋 All (${parsed.length})`;
-
-            document.getElementById('cheapDesc').innerText = `Tied for Lowest Cost (Sum: ${minCost}):`;
-            document.getElementById('simpDesc').innerText = `Tied for Fewest Inventory Slots (Count: ${minSimp}):`;
+            
+            document.getElementById('cheapDesc').innerText = `Tied for Least Higher-tier Materils (Sum of Levels: ${minCost}):`;
+            document.getElementById('simpDesc').innerText = `Tied for Fewest Unique Materials (Count: ${minSimp}):`;
 
             document.getElementById('outCheap').innerText = cheapTxt;
             document.getElementById('outSimp').innerText = simpTxt;
