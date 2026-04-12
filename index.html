@@ -110,7 +110,7 @@
 <body>
 
     <h1>Brute Horse</h1>
-    <p class="subtitle">Version 1.2</p>
+    <p class="subtitle">Version 1.3</p>
     <p class="subtitle">Find the fastest, cheapest, and simplest feeding paths for your Wynncraft mount using brute force</p>
 
     <div class="container">
@@ -128,6 +128,9 @@
         <div class="full-width">
             <label style="font-weight: bold; color: var(--secondary);">Maximum Material Level Allowed:</label>
             <input type="number" id="maxCap" value="115" min="1" max="150">
+            <br><br>
+            <label style="font-weight: bold; color: var(--secondary);">Search Depth Limit (Max Feedings):</label>
+            <input type="number" id="maxFeeds" value="15" min="5" max="40">
             <div id="capWarning" style="color: #ff7675; font-size: 13px; display: none; margin-top: 5px;">
                 ⚠️ Warning: Materials above Level 115 are theoretical and do not currently exist in-game.
             </div>
@@ -344,6 +347,7 @@
             }
 
             let rawCap = parseInt(document.getElementById('maxCap').value) || 115;
+            let rawLimit = parseInt(document.getElementById('maxFeeds').value) || 15;
             let capWarning = document.getElementById('capWarning');
 
             // Show theoretical warning if cap is > 115
@@ -390,7 +394,7 @@
                 }
             };
 
-            worker.postMessage({ startStats, targetStats, userMaxCap: UserMaxCap, maxMatLvl: MaxMatLvl });
+            worker.postMessage({ startStats, targetStats, userMaxCap: UserMaxCap, maxMatLvl: MaxMatLvl, limit: rawLimit });
         }
 
         function formatSequence(path, maxLvl) {
