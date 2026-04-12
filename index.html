@@ -418,7 +418,7 @@
             let status = document.getElementById('status');
             
             if (data.combinations.length === 0) {
-                status.innerText = `Completed in ${elapsed}s. Evaluated ${data.states.toLocaleString()} states.\nNO SOLUTION FOUND UNDER 15 FEEDINGS.`;
+                status.innerText = `Completed in ${elapsed}s. Evaluated ${data.states.toLocaleString()} states.\nNO SOLUTION FOUND UNDER ${rawLimit} FEEDINGS.`;
                 return;
             }
 
