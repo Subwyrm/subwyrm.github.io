@@ -451,8 +451,8 @@
             document.querySelectorAll('.tab')[1].innerText = `🎒 Simplest (${simpCount})`;
             document.querySelectorAll('.tab')[2].innerText = `📋 All (${parsed.length})`;
 
-            document.getElementById('cheapDesc').innerText = `Prioritizes the lowest-level materials (Sum of Levels: ${minCost}):`;
-            document.getElementById('simpDesc').innerText = `Prioritizes the fewest unique materials  (Count: ${minSimp}):`;
+            document.getElementById('cheapDesc').innerText = `Prioritizes using lower-level materials to save on cost (Sum of Levels: ${minCost}):`;
+            document.getElementById('simpDesc').innerText = `Prioritizes using the fewest unique materials to save inventory/bank space  (Count: ${minSimp}):`;
 
             document.getElementById('outCheap').innerText = cheapTxt;
             document.getElementById('outSimp').innerText = simpTxt;
