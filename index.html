@@ -110,7 +110,7 @@
 <body>
 
     <h1>Brute Horse</h1>
-    <p class="subtitle">Version 1.5.2</p>
+    <p class="subtitle">Version 1.5.4</p>
     <p class="subtitle">Find the fastest, cheapest, and simplest feeding paths for your Wynncraft mount using brute force</p>
 
     <div class="container">
@@ -165,8 +165,17 @@
     <!-- WEB WORKER SCRIPT (Runs the heavy math in the background) -->
     <script id="workerCode" type="javascript/worker">
         const GameTiers =[1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150];
-        const Materials = [["Oil", "0", "0", "A", "0", "C", "0", "0", "B"],["Meat", "0", "E", "0", "D", "0", "0", "0", "0"],["String", "0", "A", "0", "0", "B", "0", "C", "0"],["Grain", "E", "0", "D", "0", "0", "0", "0", "0"],["Ingot", "0", "0", "0", "D", "0", "E", "0", "0"],["Gem", "B", "0", "0", "A", "0", "0", "0", "C"],["Wood", "A", "C", "0", "0", "0", "B", "0", "0"],["Paper", "0", "0", "E", "0", "0", "0", "D", "0"]
+        const Materials = [
+            ["Oil",     "0", "0", "A", "0", "C", "0", "0", "B"],
+            ["Meat",    "0", "D", "0", "E", "0", "0", "0", "0"],
+            ["String",  "0", "A", "0", "0", "B", "0", "C", "0"],
+            ["Grain",   "E", "0", "D", "0", "0", "0", "0", "0"],
+            ["Ingot",   "0", "0", "0", "D", "0", "E", "0", "0"],
+            ["Gem",     "B", "0", "0", "A", "0", "0", "0", "C"],
+            ["Wood",    "A", "C", "0", "0", "0", "B", "0", "0"],
+            ["Paper",   "0", "0", "E", "0", "0", "0", "D", "0"]
         ];
+        
         const StatCount = 8;
         
         let MinFeedings = 15;
@@ -180,7 +189,7 @@
         
         let PrecomputedGains =[];
         let MaxStatGains =[];
-        let TierLookup = new Int32Array(501);
+        let TierLookup = new Int32Array(0);
 
         function GetTier(stat) {
             let highest = 1;
@@ -202,7 +211,7 @@
         }
 
         function InitLookupTables() {
-            for (let i = 0; i <= 500; i++) TierLookup[i] = GetTier(i);
+            for (let i = 0; i <= 504; i++) TierLookup[i] = GetTier(i);
 
             for (let m = 0; m < Materials.length; m++) {
                 let matMap = {};
@@ -229,12 +238,11 @@
 
         let isCancelled = false;
 
-        function FindBestFeeding(currentDepth, stats, currentPath, allowedIdx) {
-            if (isCancelled) return; // INSTANTLY HALT if user clicked give up
+        function FindBestFeeding(currentDepth, currentCost, stats, currentPath, allowedIdx) {
+            if (isCancelled) return; 
 
             StatesEvaluated++;
             if (StatesEvaluated % 20000 === 0) {
-                // Now sends the number of solutions found back to the UI
                 postMessage({ type: 'progress', states: StatesEvaluated, best: MinFeedings, sols: BestCombinations.length });
             }
 
@@ -244,18 +252,19 @@
 
             for (let i = 0; i < StatCount; i++) {
                 let cappedVal = stats[i] < TargetStats[i] ? stats[i] : TargetStats[i];
-                stateKey = (stateKey << 8n) | BigInt(cappedVal);
+                stateKey = (stateKey << 10n) | BigInt(cappedVal);
                 if (cappedVal < TargetStats[i]) allMaxed = false;
                 if (cappedVal > maxCurrentStat) maxCurrentStat = cappedVal;
             }
 
-            let matLvl = TierLookup[maxCurrentStat + 1] < UserMaxCap ? TierLookup[maxCurrentStat + 1] : UserMaxCap;
+            // FIXED OFF-BY-ONE BUG: Removed the +1 from maxCurrentStat
+            let matLvl = TierLookup[maxCurrentStat] < UserMaxCap ? TierLookup[maxCurrentStat] : UserMaxCap;
             if (matLvl === MaxMatLvl) stateKey = (stateKey << 4n) | BigInt(allowedIdx);
 
             if (allMaxed) {
                 if (currentDepth < MinFeedings) {
                     MinFeedings = currentDepth;
-                    BestCombinations = [JSON.parse(JSON.stringify(currentPath))];
+                    BestCombinations =[JSON.parse(JSON.stringify(currentPath))];
                     postMessage({ type: 'sync_sols', combinations: BestCombinations });
                 } else if (currentDepth === MinFeedings) {
                     BestCombinations.push(JSON.parse(JSON.stringify(currentPath)));
@@ -266,18 +275,24 @@
 
             if (currentDepth >= MinFeedings) return;
 
-            // Heuristic Pruning
             let remainingSteps = MinFeedings - currentDepth;
             for (let i = 0; i < StatCount; i++) {
                 let cappedVal = stats[i] < TargetStats[i] ? stats[i] : TargetStats[i];
                 if ((TargetStats[i] - cappedVal) > (MaxStatGains[i] * remainingSteps)) return;
             }
 
-            let savedDepth = VisitedStates.get(stateKey);
-            if (savedDepth !== undefined && savedDepth <= currentDepth) return;
-            VisitedStates.set(stateKey, currentDepth);
+            // Checks if the new path has a CHEAPER cost before pruning
+            let savedData = VisitedStates.get(stateKey);
+            if (savedData !== undefined) {
+                let savedDepth = savedData >> 16;
+                let savedCost = savedData & 0xFFFF;
+                
+                if (currentDepth > savedDepth) return; // Slower path -> Prune
+                if (currentDepth === savedDepth && currentCost >= savedCost) return; // Same speed, but worse cost -> Prune
+            }
+            // Store both Depth AND Cost in a single 32-bit integer for extreme speed
+            VisitedStates.set(stateKey, (currentDepth << 16) | currentCost);
 
-            // Memory Crash Prevention
             if (VisitedStates.size > 12000000) VisitedStates.clear();
 
             for (let matIdx = 0; matIdx < Materials.length; matIdx++) {
@@ -288,11 +303,15 @@
                 for (let i=0; i<StatCount; i++) gainsSum += gains[i];
                 if (gainsSum === 0) continue;
 
+                let newCost = currentCost + matLvl; // Calculate new cumulative cost
+
                 for (let i=0; i<StatCount; i++) stats[i] += gains[i];
                 currentPath.push([Materials[matIdx][0], matLvl]);
                 
                 let nextIdx = (matLvl === MaxMatLvl) ? matIdx : 0;
-                FindBestFeeding(currentDepth + 1, stats, currentPath, nextIdx);
+                
+                // Pass newCost into the next iteration
+                FindBestFeeding(currentDepth + 1, newCost, stats, currentPath, nextIdx);
 
                 currentPath.pop();
                 for (let i=0; i<StatCount; i++) stats[i] -= gains[i];
@@ -300,16 +319,32 @@
         }
 
         self.onmessage = function(e) {
-            let data = e.data;
+             let data = e.data;
             TargetStats = data.targetStats;
             UserMaxCap = data.userMaxCap;
             MaxMatLvl = data.maxMatLvl;
             
-            let startLimit = data.limit || 15;
-            let safetyCap = 50; 
+            // 1. Dynamic Tier Lookup Sizing
+            let highestNeeded = 500;
+            for (let t of TargetStats) { if (t > highestNeeded) highestNeeded = t; }
+            TierLookup = new Int32Array(highestNeeded + 10); // +10 safety buffer
             
             InitLookupTables();
             let stats = new Int32Array(data.startStats);
+
+            // 2. Calculate Theoretical Minimum Steps (SMART START)
+            let theoreticalMin = 1;
+            for (let i = 0; i < StatCount; i++) {
+                let diff = TargetStats[i] - stats[i];
+                if (diff > 0 && MaxStatGains[i] > 0) {
+                    let minSteps = Math.ceil(diff / MaxStatGains[i]);
+                    if (minSteps > theoreticalMin) theoreticalMin = minSteps;
+                }
+            }
+
+            // 3. Fix the Bounds logic (User input is the CEILING, not the floor)
+            let safetyCap = data.limit || 30; 
+            let startLimit = Math.min(theoreticalMin, safetyCap); 
 
             let found = false;
             for (let currentLimit = startLimit; currentLimit <= safetyCap; currentLimit++) {
@@ -320,7 +355,7 @@
 
                 postMessage({ type: 'progress', states: 0, best: currentLimit, sols: 0 });
 
-                FindBestFeeding(0, stats,[], 0);
+                FindBestFeeding(0, 0, stats,[], 0);
 
                 if (BestCombinations.length > 0) {
                     found = true;
@@ -476,7 +511,8 @@
                 let salvagedData = {
                     combinations: latestCombinations,
                     states: latestStates,
-                    best: latestDepth
+                    best: latestDepth,
+                    cancelled: true
                 };
                 
                 processResults(salvagedData, currentMaxMatLvl);
@@ -509,7 +545,11 @@
                 return;
             }
 
-            status.innerText = `Done! Found solution within ${data.combinations[0].length} feeds. Found ${data.combinations.length} solutions in ${elapsed}s (${data.states.toLocaleString()} states).`;
+            if (data.cancelled) {
+                status.innerHTML = `<span style="color: #ff7675;">⚠️ SEARCH HALTED EARLY.</span><br>Compiled partial results found so far in ${elapsed}s.`;
+            } else {
+                status.innerText = `Done! Found solution within ${data.combinations[0].length} feeds. Found ${data.combinations.length} solutions in ${elapsed}s (${data.states.toLocaleString()} states).`;
+            }
 
             let parsed = [];
             let minCost = 999999, minSimp = 999999;
@@ -561,8 +601,9 @@
             switchTab(1); // Default to cheapest tab
         }
     </script>
-</body>
+
     <p class="subtitle">
-        <br/>Voluntary disclosure: this program is AI slop made by playing 99 questions with Gemini 3.1 Pro Preview
-        <br/>If something breaks or goes wrong, its technically not my fault
+        <br/>Disclosure: this program is 99% AI-generated using Gemini 3.1 Pro Preview
+    </p>
+</body>
 </html>
